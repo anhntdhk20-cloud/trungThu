@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Đêm Trung Thu 3D</title>
+<style>
+  :root{
+    box-sizing:border-box;
+    --bg:#080416; --card:#1c1230; --accent:#ff9b52; --pink:#ff6fae; --text:#fff7f0; --muted:#d8c9e5;
+    padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+  }
+  *{box-sizing:inherit}
+  html,body{height:100%; margin:0; background:var(--bg); color:var(--text); font-family:'Segoe UI',system-ui,sans-serif; overflow:hidden;}
+  #scene{position:fixed; inset:0;}
+  #musicPlayer{position:fixed; width:1px; height:1px; border:0; opacity:0; pointer-events:none;}
+  canvas{display:block; width:100%; height:100%; touch-action:none; cursor:grab;}
+  canvas:active{cursor:grabbing;}
+
+  #ui{
+    position:fixed; left:0; right:0; bottom:0; z-index:10;
+    padding:14px 14px calc(18px + env(safe-area-inset-bottom,0px));
+    display:flex; flex-direction:column; gap:8px; align-items:center;
+    pointer-events:none;
+  }
+  #ui > *{pointer-events:auto;}
+  #hint{
+    padding:9px 15px; border:1px solid rgba(255,214,174,0.2); border-radius:999px;
+    background:rgba(19,10,38,0.62); backdrop-filter:blur(12px);
+    color:var(--muted); font-size:12px; letter-spacing:.15px; text-align:center;
+    box-shadow:0 8px 28px rgba(0,0,0,.2);
+  }
+  button{
+    background:linear-gradient(135deg,var(--accent),var(--pink)); color:#20101c; border:none;
+    border-radius:10px; padding:8px 14px; font-weight:700; font-size:14px; cursor:pointer; white-space:nowrap;
+  }
+  button:active{transform:scale(0.96);}
+
+  #cardOverlay{
+    position:fixed; inset:0; z-index:20; display:none; align-items:center; justify-content:center;
+    background:rgba(5,2,16,0.7); backdrop-filter:blur(8px);
+    padding:20px calc(20px + env(safe-area-inset-right,0px)) calc(20px + env(safe-area-inset-bottom,0px)) calc(20px + env(safe-area-inset-left,0px));
+  }
+  #cardOverlay.show{display:flex;}
+  #card{
+    background:linear-gradient(160deg,#2a1740,#4a1f3a);
+    border:1px solid rgba(255,175,120,0.4); border-radius:18px;
+    padding:26px 22px; max-width:360px; width:100%; text-align:center;
+    box-shadow:0 24px 80px rgba(0,0,0,0.6), 0 0 45px rgba(255,120,100,.12);
+    animation:pop .35s ease;
+  }
+  @keyframes pop{from{transform:scale(0.85); opacity:0;} to{transform:scale(1); opacity:1;}}
+  #card .lantern-emoji{font-size:40px; margin-bottom:6px;}
+  #card p{font-size:17px; line-height:1.5; margin:10px 0 18px;}
+  #card button{width:100%;}
+
+  #title{
+    position:fixed; top:calc(14px + env(safe-area-inset-top,0px)); left:0; right:0;
+    text-align:center; z-index:10; pointer-events:none;
+  }
+  #title h1{font-size:clamp(17px,4vw,23px); margin:0; letter-spacing:1.5px; text-shadow:0 0 12px rgba(255,140,80,0.6);}
+  #title p{margin:7px 0 0; color:var(--muted); font-size:11px; letter-spacing:2px; text-transform:uppercase; opacity:.8;}
+  #vignette{position:fixed; inset:0; z-index:2; pointer-events:none; background:radial-gradient(circle at 50% 42%, transparent 25%, rgba(5,2,16,.18) 65%, rgba(5,2,16,.62) 100%);}
+  @media (max-width:600px){
+    #title{top:calc(12px + env(safe-area-inset-top,0px));}
+    #title p{font-size:9px; letter-spacing:1.5px;}
+    #hint{font-size:11px; padding:8px 12px;}
+    #card{padding:23px 18px;}
+  }
+</style>
+</head>
+<body>
+<div id="scene"></div>
+
+<div id="title"><h1>🏮 Đêm Trăng Trung Thu 🏮</h1><p>Một đêm rằm thật dịu dàng</p></div>
+<div id="vignette"></div>
+
+<div id="cardOverlay">
+  <div id="card">
+    <div class="lantern-emoji">🏮</div>
+    <p id="cardMsg"></p>
+    <button onclick="closeCard()">Đóng</button>
+  </div>
+</div>
+
+<div id="ui">
+  <div id="hint">Kéo để xoay • Cuộn để zoom • Chạm vào lồng đèn để xem lời chúc</div>
+</div>
+<iframe
+  id="musicPlayer"
+  src="https://www.youtube.com/embed/rvCxmwXk4PI?autoplay=1&loop=1&playlist=rvCxmwXk4PI&controls=0&rel=0&playsinline=1&enablejsapi=1"
+  title="Nhạc Trung Thu"
+  allow="autoplay; encrypted-media"
+  referrerpolicy="strict-origin-when-cross-origin"
+  aria-hidden="true"></iframe>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ---------- Scene setup ----------
+const container = document.getElementById('scene');
+const musicPlayer = document.getElementById('musicPlayer');
+function startMusicAfterInteraction(){
+  musicPlayer.contentWindow.postMessage(JSON.stringify({event:'command',func:'unMute',args:[]}), 'https://www.youtube.com');
+  musicPlayer.contentWindow.postMessage(JSON.stringify({event:'command',func:'playVideo',args:[]}), 'https://www.youtube.com');
+  window.removeEventListener('pointerdown', startMusicAfterInteraction);
+  window.removeEventListener('touchstart', startMusicAfterInteraction);
+}
+window.addEventListener('pointerdown', startMusicAfterInteraction, {once:true});
+window.addEventListener('touchstart', startMusicAfterInteraction, {once:true, passive:true});
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x0a0618, 0.02);
+
+const camera = new THREE.PerspectiveCamera(55, innerWidth/innerHeight, 0.1, 200);
+let camDist = 22, camTheta = 0.5, camPhi = 1.15;
+function updateCamera(){
+  camera.position.set(
+    camDist*Math.sin(camPhi)*Math.sin(camTheta),
+    camDist*Math.cos(camPhi)+3,
+    camDist*Math.sin(camPhi)*Math.cos(camTheta)
+  );
+  camera.lookAt(0,4,0);
+}
+updateCamera();
+
+const renderer = new THREE.WebGLRenderer({antialias:true, alpha:false, powerPreference:'high-performance'});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.08;
+container.appendChild(renderer.domElement);
+
+// ---------- Lights ----------
+scene.add(new THREE.AmbientLight(0x6655aa, 0.7));
+const moonLight = new THREE.PointLight(0xfff5ea, 1.4, 60);
+moonLight.position.set(0,16,-6);
+scene.add(moonLight);
+const warmLight = new THREE.PointLight(0xffa060, 0.8, 30);
+warmLight.position.set(0,3,4);
+scene.add(warmLight);
+
+// ---------- Purple planet ----------
+const planetMat = new THREE.MeshStandardMaterial({
+  color:0x40336f, roughness:0.82, metalness:0.04,
+  emissive:0x100c2d, emissiveIntensity:0.22
+});
+const planet = new THREE.Mesh(new THREE.SphereGeometry(7,64,40), planetMat);
+planet.position.y = -3.2;
+planet.scale.y = 0.78;
+scene.add(planet);
+const continentMat = new THREE.MeshStandardMaterial({color:0x65588c, roughness:0.95, emissive:0x191433, emissiveIntensity:0.18});
+const continents = new THREE.Group();
+const continentShapes = [
+  {x:-2.7,y:-1.8,z:5.45,sx:1.7,sy:.45,sz:.8,r:-.2},
+  {x:2.2,y:-2.7,z:5.75,sx:1.25,sy:.35,sz:.65,r:.35},
+  {x:-.4,y:-4.45,z:5.95,sx:1.0,sy:.3,sz:.55,r:-.65},
+  {x:3.7,y:.1,z:4.9,sx:.8,sy:.28,sz:.5,r:.1}
+];
+continentShapes.forEach(shape=>{
+  const patch = new THREE.Mesh(new THREE.SphereGeometry(1,24,16), continentMat);
+  patch.position.set(shape.x,shape.y,shape.z);
+  patch.scale.set(shape.sx,shape.sy,shape.sz);
+  patch.rotation.z = shape.r;
+  continents.add(patch);
+});
+scene.add(continents);
+
+// ---------- Tree ----------
+const trunkMat = new THREE.MeshStandardMaterial({color:0x2a1810, roughness:0.9});
+const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.35,0.7,6,14), trunkMat);
+trunk.position.y = 0.5;
+scene.add(trunk);
+// simple branches
+for(let i=0;i<5;i++){
+  const b = new THREE.Mesh(new THREE.CylinderGeometry(0.08,0.2,3,10), trunkMat);
+  b.position.set(Math.sin(i*1.3)*1.2, 3+i*0.3, Math.cos(i*1.3)*1.2);
+  b.rotation.z = Math.sin(i)*0.8;
+  b.rotation.x = Math.cos(i)*0.6;
+  scene.add(b);
+}
+// A broad branch creates a natural seat for the rabbit.
+const rabbitBranch = new THREE.Mesh(new THREE.CylinderGeometry(0.16,0.28,2.8,12), trunkMat);
+rabbitBranch.position.set(-1.15, 3.45, 0.55);
+rabbitBranch.rotation.z = -0.95;
+rabbitBranch.rotation.x = 0.18;
+scene.add(rabbitBranch);
+const branchTip = new THREE.Mesh(new THREE.SphereGeometry(0.23,16,12), trunkMat);
+branchTip.position.set(-2.05, 4.3, 0.7);
+scene.add(branchTip);
+// foliage as pink particle cloud
+const foliageCount = 2200;
+const fPos = new Float32Array(foliageCount*3);
+for(let i=0;i<foliageCount;i++){
+  const r = 4.2*Math.cbrt(Math.random());
+  const th = Math.random()*Math.PI*2, ph = Math.acos(2*Math.random()-1);
+  fPos[i*3] = r*Math.sin(ph)*Math.cos(th);
+  fPos[i*3+1] = 6.5 + r*Math.cos(ph)*0.8;
+  fPos[i*3+2] = r*Math.sin(ph)*Math.sin(th);
+}
+const foliageGeo = new THREE.BufferGeometry();
+foliageGeo.setAttribute('position', new THREE.BufferAttribute(fPos,3));
+const foliageMat = new THREE.PointsMaterial({color:0xff7fc0, size:0.22, transparent:true, opacity:0.9, blending:THREE.AdditiveBlending, depthWrite:false});
+scene.add(new THREE.Points(foliageGeo, foliageMat));
+
+// ---------- Moon ----------
+const moon = new THREE.Mesh(new THREE.SphereGeometry(2.2,24,24), new THREE.MeshBasicMaterial({color:0xfff8ec}));
+moon.position.set(0,15,-8);
+scene.add(moon);
+const moonGlow = new THREE.Mesh(
+  new THREE.SphereGeometry(2.8,24,24),
+  new THREE.MeshBasicMaterial({color:0xfff0d0, transparent:true, opacity:0.2, blending:THREE.AdditiveBlending, depthWrite:false})
+);
+moonGlow.position.copy(moon.position);
+scene.add(moonGlow);
+
+const moonHalo = new THREE.PointLight(0xffd9a8, 0.5, 24);
+moonHalo.position.copy(moon.position);
+scene.add(moonHalo);
+
+// ---------- Rabbit ----------
+const rabbitFurMat = new THREE.MeshStandardMaterial({color:0xffffff, emissive:0xfff5ea, emissiveIntensity:0.35, roughness:0.65});
+const rabbitPinkMat = new THREE.MeshStandardMaterial({color:0xffa0b8, emissive:0x662030, roughness:0.6});
+const rabbitEyeMat = new THREE.MeshStandardMaterial({color:0x180800, roughness:0.15, metalness:0.8});
+const rabbitBlushMat = new THREE.MeshStandardMaterial({color:0xff91aa, transparent:true, opacity:0.58, roughness:0.7});
+const rabbit = new THREE.Group();
+const body = new THREE.Mesh(new THREE.SphereGeometry(0.92,32,24), rabbitFurMat);
+body.scale.set(0.92,1.02,1.08);
+body.position.y = 0.08;
+rabbit.add(body);
+const belly = new THREE.Mesh(new THREE.SphereGeometry(0.64,28,20), rabbitFurMat);
+belly.scale.set(0.88,1.05,0.48);
+belly.position.set(0,0.02,0.75);
+rabbit.add(belly);
+const head = new THREE.Mesh(new THREE.SphereGeometry(0.58,32,24), rabbitFurMat);
+head.scale.set(1.02,1,0.96);
+head.position.set(0,1.08,0.32);
+rabbit.add(head);
+const muzzle = new THREE.Mesh(new THREE.SphereGeometry(0.3,24,18), rabbitFurMat);
+muzzle.scale.set(1.35,0.75,0.8);
+muzzle.position.set(0,0.88,0.78);
+rabbit.add(muzzle);
+const haunch = new THREE.Mesh(new THREE.SphereGeometry(0.55,28,20), rabbitFurMat);
+haunch.scale.set(1.12,0.9,0.95);
+haunch.position.set(0,-0.38,0.16);
+rabbit.add(haunch);
+[-0.36,0.36].forEach(x=>{
+ const foot = new THREE.Mesh(new THREE.SphereGeometry(0.3,24,18), rabbitFurMat);
+ foot.scale.set(1.05,0.58,1.35);
+ foot.position.set(x,-0.72,0.58);
+ rabbit.add(foot);
+});
+[-0.28,0.28].forEach(x=>{
+ const paw = new THREE.Mesh(new THREE.SphereGeometry(0.18,20,16), rabbitFurMat);
+ paw.scale.set(0.72,1.25,0.72);
+ paw.position.set(x,0.12,0.83);
+ paw.rotation.z = x < 0 ? -0.18 : 0.18;
+ rabbit.add(paw);
+});
+const tail = new THREE.Mesh(new THREE.SphereGeometry(0.27,24,18), rabbitFurMat);
+tail.position.set(0,-0.08,-0.82);
+rabbit.add(tail);
+[-0.2,0.2].forEach(x=>{
+ const ear = new THREE.Mesh(new THREE.SphereGeometry(0.17,24,18), rabbitFurMat);
+ ear.scale.set(0.68,2.75,0.7);
+ ear.position.set(x,1.83,0.25); ear.rotation.z = x>0?-0.15:0.15;
+ rabbit.add(ear);
+ const innerEar = new THREE.Mesh(new THREE.SphereGeometry(0.095,24,18), rabbitPinkMat);
+ innerEar.scale.set(0.56,2.35,0.42);
+ innerEar.position.set(x,1.8,0.36); innerEar.rotation.z = x>0?-0.15:0.15;
+ rabbit.add(innerEar);
+});
+[-0.16,0.16].forEach(x=>{
+ const eye = new THREE.Mesh(new THREE.SphereGeometry(0.085,16,12), rabbitEyeMat);
+ eye.position.set(x,1.15,0.82);
+ rabbit.add(eye);
+ const eyeLight = new THREE.Mesh(new THREE.SphereGeometry(0.022,10,8), new THREE.MeshBasicMaterial({color:0xffffff}));
+ eyeLight.position.set(x-0.025,1.18,0.89);
+ rabbit.add(eyeLight);
+});
+[-0.29,0.29].forEach(x=>{
+ const blush = new THREE.Mesh(new THREE.SphereGeometry(0.11,16,12), rabbitBlushMat);
+ blush.scale.set(1.2,0.58,0.25);
+ blush.position.set(x,0.94,0.86);
+ rabbit.add(blush);
+});
+const nose = new THREE.Mesh(new THREE.SphereGeometry(0.075,16,12), rabbitPinkMat);
+nose.scale.set(1.15,0.8,0.8);
+nose.position.set(0,0.9,1.01);
+rabbit.add(nose);
+const mouth = new THREE.Mesh(new THREE.TorusGeometry(0.07,0.014,8,16,Math.PI), rabbitPinkMat);
+mouth.rotation.x = Math.PI / 2;
+mouth.position.set(0,0.8,1.02);
+rabbit.add(mouth);
+rabbit.position.set(0.15,2.02,2.45);
+rabbit.scale.set(0.78,0.78,0.78);
+rabbit.rotation.y = -0.12;
+scene.add(rabbit);
+
+// ---------- Lanterns (clickable, orbiting) ----------
+const lanternMat = new THREE.MeshStandardMaterial({color:0xff8a3d, emissive:0xff5a10, emissiveIntensity:0.6, roughness:0.5});
+const capMat = new THREE.MeshStandardMaterial({color:0xffd27a, emissive:0xffaa40, emissiveIntensity:0.5});
+const lanternDarkMat = new THREE.MeshStandardMaterial({color:0x7c2b2a, roughness:0.55});
+const messages = [
+  "Chúc bạn Trung Thu ấm áp bên gia đình, đủ đầy như ánh trăng rằm 🌕",
+  "Ước mong mọi buồn lo tan theo ánh đèn lồng, chỉ còn lại niềm vui ở lại 🏮",
+  "Trăng tròn thì lòng người cũng tròn, chúc bạn luôn hạnh phúc và bình an ✨",
+  "Gửi bạn một chiếc bánh Trung Thu ngọt ngào, chúc năm mới học hành tấn tới 🥮",
+  "Dưới ánh trăng này, chúc bạn gặp nhiều may mắn và những điều tốt đẹp 🌙",
+  "Chúc bạn có một mùa Trung Thu rực rỡ như muôn ngàn ánh đèn lồng 🎇",
+  "Mong những ước mơ của bạn sẽ toả sáng như trăng rằm đêm nay 🐇",
+  "Trung Thu về, chúc bạn luôn được yêu thương và trân trọng 💛",
+  
+];
+const lanterns = [];
+const lanternCount = 6;
+const lanternGroup = new THREE.Group();
+scene.add(lanternGroup);
+for(let i=0;i<lanternCount;i++){
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.55,20,14), lanternMat.clone());
+  body.scale.set(0.88,1.08,0.88);
+  g.add(body);
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.43,0.035,8,20), lanternDarkMat);
+  ring.rotation.x = Math.PI/2;
+  [-0.28,0,0.28].forEach(y=>{
+    const rib = ring.clone();
+    rib.position.y = y;
+    rib.scale.set(1,1,1);
+    g.add(rib);
+  });
+  const capTop = new THREE.Mesh(new THREE.ConeGeometry(0.42,0.25,12), capMat);
+  capTop.position.y = 0.62; capTop.rotation.y = Math.PI/4;
+  g.add(capTop);
+  const capBottom = capTop.clone(); capBottom.rotation.x = Math.PI; capBottom.position.y = -0.62;
+  g.add(capBottom);
+  const cord = new THREE.Mesh(new THREE.CylinderGeometry(0.025,0.025,0.45,8), lanternDarkMat);
+  cord.position.y = 0.92;
+  g.add(cord);
+  const tassel = new THREE.Mesh(new THREE.SphereGeometry(0.11,12,8), capMat);
+  tassel.position.y = -0.82;
+  g.add(tassel);
+  const angle = (i/lanternCount)*Math.PI*2;
+  const radius = 6.5 + (i%2)*1.2;
+  const height = 3.5 + (i%3)*1.4;
+  g.userData = {angle, radius, height, speed:0.15+Math.random()*0.1, msg:messages[i%messages.length]};
+  g.position.set(Math.cos(angle)*radius, height, Math.sin(angle)*radius);
+  lanternGroup.add(g);
+  lanterns.push(g);
+}
+
+// small paper lanterns on the left (static, like reference image)
+for(let i=0;i<3;i++){
+  const g = new THREE.Mesh(new THREE.SphereGeometry(0.34,16,12), lanternMat.clone());
+  g.scale.y = 1.15;
+  g.position.set(-8-i*0.6, 6+i*1.2, -3-i*1.5);
+  g.rotation.z = 0.3;
+  scene.add(g);
+}
+
+// ---------- Stars background ----------
+const starGeo = new THREE.BufferGeometry();
+const starCount = 600;
+const starPos = new Float32Array(starCount*3);
+for(let i=0;i<starCount;i++){
+  starPos[i*3] = (Math.random()-0.5)*100;
+  starPos[i*3+1] = Math.random()*50;
+  starPos[i*3+2] = (Math.random()-0.5)*100;
+}
+starGeo.setAttribute('position', new THREE.BufferAttribute(starPos,3));
+scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({color:0xffffff,size:0.15,transparent:true,opacity:0.8})));
+
+// ---------- Interaction: drag to rotate, wheel to zoom ----------
+let dragging=false, lastX=0, lastY=0;
+function onDown(x,y){
+  dragging=true;
+  lastX=x;
+  lastY=y;
+}
+function onMove(x,y){
+  if(!dragging) return;
+  camTheta -= (x-lastX)*0.005;
+  camPhi = Math.min(2.4, Math.max(0.3, camPhi - (y-lastY)*0.005));
+  lastX=x; lastY=y; updateCamera();
+}
+function onUp(){
+  if(!dragging) return;
+  dragging=false;
+}
+renderer.domElement.addEventListener('mousedown', e=>onDown(e.clientX,e.clientY));
+renderer.domElement.addEventListener('mousemove', e=>onMove(e.clientX,e.clientY));
+window.addEventListener('mouseup', onUp);
+renderer.domElement.addEventListener('touchstart', e=>{const t=e.touches[0]; onDown(t.clientX,t.clientY);}, {passive:true});
+renderer.domElement.addEventListener('touchmove', e=>{const t=e.touches[0]; onMove(t.clientX,t.clientY);}, {passive:true});
+renderer.domElement.addEventListener('touchend', onUp);
+renderer.domElement.addEventListener('wheel', e=>{camDist = Math.min(40,Math.max(10,camDist+e.deltaY*0.02)); updateCamera();}, {passive:true});
+
+// ---------- Click to open lantern card ----------
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+function handleTap(clientX, clientY){
+  mouse.x = (clientX/innerWidth)*2-1;
+  mouse.y = -(clientY/innerHeight)*2+1;
+  raycaster.setFromCamera(mouse, camera);
+  const hits = raycaster.intersectObjects(lanternGroup.children, true);
+  if(hits.length){
+    let obj = hits[0].object;
+    while(obj.parent && !obj.userData.msg) obj = obj.parent;
+    if(obj.userData.msg) openCard(obj.userData.msg);
+  }
+}
+let downX=0, downY=0;
+renderer.domElement.addEventListener('mousedown', e=>{downX=e.clientX; downY=e.clientY;});
+renderer.domElement.addEventListener('mouseup', e=>{
+  if(Math.abs(e.clientX-downX)<5 && Math.abs(e.clientY-downY)<5) handleTap(e.clientX,e.clientY);
+});
+renderer.domElement.addEventListener('touchstart', e=>{const t=e.touches[0]; downX=t.clientX; downY=t.clientY;}, {passive:true});
+renderer.domElement.addEventListener('touchend', e=>{
+  const t=e.changedTouches[0];
+  if(Math.abs(t.clientX-downX)<8 && Math.abs(t.clientY-downY)<8) handleTap(t.clientX,t.clientY);
+});
+
+function openCard(msg){
+  document.getElementById('cardMsg').textContent = msg;
+  document.getElementById('cardOverlay').classList.add('show');
+}
+function closeCard(){
+  document.getElementById('cardOverlay').classList.remove('show');
+}
+
+// ---------- Resize ----------
+window.addEventListener('resize', ()=>{
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+// ---------- Animate ----------
+let t=0;
+let lastFrame = performance.now();
+function animate(){
+  requestAnimationFrame(animate);
+  const now = performance.now();
+  const delta = Math.min((now-lastFrame)/1000, 0.05);
+  lastFrame = now;
+  t += delta;
+  camTheta += delta * 0.12;
+  updateCamera();
+  lanterns.forEach(g=>{
+    g.userData.angle += g.userData.speed*delta;
+    g.position.x = Math.cos(g.userData.angle)*g.userData.radius;
+    g.position.z = Math.sin(g.userData.angle)*g.userData.radius;
+    g.position.y = g.userData.height + Math.sin(t*2+g.userData.angle)*0.3;
+    g.rotation.y += delta;
+    g.scale.setScalar(1 + Math.sin(t*2.5 + g.userData.angle)*0.035);
+  });
+  rabbit.rotation.y = Math.sin(t*0.5)*0.15;
+  moonGlow.material.opacity = 0.22 + Math.sin(t*0.7)*0.035;
+  renderer.render(scene, camera);
+}
+animate();
+</script>
+</body>
+</html>
