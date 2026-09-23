@@ -131,11 +131,11 @@ renderer.toneMappingExposure = 1.08;
 container.appendChild(renderer.domElement);
 
 // ---------- Lights ----------
-scene.add(new THREE.AmbientLight(0x6655aa, 0.7));
-const moonLight = new THREE.PointLight(0xfff5ea, 1.4, 60);
+scene.add(new THREE.AmbientLight(0x51406f, 0.62));
+const moonLight = new THREE.PointLight(0xffc766, 1.7, 65);
 moonLight.position.set(0,16,-6);
 scene.add(moonLight);
-const warmLight = new THREE.PointLight(0xffa060, 0.8, 30);
+const warmLight = new THREE.PointLight(0xff8f4d, 0.72, 30);
 warmLight.position.set(0,3,4);
 scene.add(warmLight);
 
@@ -203,17 +203,20 @@ const foliageMat = new THREE.PointsMaterial({color:0xff7fc0, size:0.22, transpar
 scene.add(new THREE.Points(foliageGeo, foliageMat));
 
 // ---------- Moon ----------
-const moon = new THREE.Mesh(new THREE.SphereGeometry(2.2,24,24), new THREE.MeshBasicMaterial({color:0xfff8ec}));
+const moon = new THREE.Mesh(
+  new THREE.SphereGeometry(2.2,40,32),
+  new THREE.MeshBasicMaterial({color:0xffd46a})
+);
 moon.position.set(0,15,-8);
 scene.add(moon);
 const moonGlow = new THREE.Mesh(
-  new THREE.SphereGeometry(2.8,24,24),
-  new THREE.MeshBasicMaterial({color:0xfff0d0, transparent:true, opacity:0.2, blending:THREE.AdditiveBlending, depthWrite:false})
+  new THREE.SphereGeometry(3.05,32,24),
+  new THREE.MeshBasicMaterial({color:0xffad45, transparent:true, opacity:0.18, blending:THREE.AdditiveBlending, depthWrite:false})
 );
 moonGlow.position.copy(moon.position);
 scene.add(moonGlow);
 
-const moonHalo = new THREE.PointLight(0xffd9a8, 0.5, 24);
+const moonHalo = new THREE.PointLight(0xffbd55, 0.65, 28);
 moonHalo.position.copy(moon.position);
 scene.add(moonHalo);
 
@@ -295,6 +298,91 @@ rabbit.position.set(0.15,2.02,2.45);
 rabbit.scale.set(0.78,0.78,0.78);
 rabbit.rotation.y = -0.12;
 scene.add(rabbit);
+
+// ---------- Mooncake beside the rabbit ----------
+const cake = new THREE.Group();
+const cakeBodyMat = new THREE.MeshStandardMaterial({
+  color:0xb96835, roughness:0.72, emissive:0x35130a, emissiveIntensity:0.12
+});
+const cakeTopMat = new THREE.MeshStandardMaterial({
+  color:0xf0a04b, roughness:0.65, emissive:0x4d1f08, emissiveIntensity:0.16
+});
+const cakeRimMat = new THREE.MeshStandardMaterial({color:0x8d3c23, roughness:0.7});
+const cakeBody = new THREE.Mesh(new THREE.CylinderGeometry(0.52,0.58,0.34,32), cakeBodyMat);
+cake.add(cakeBody);
+const cakeTop = new THREE.Mesh(new THREE.CylinderGeometry(0.48,0.48,0.045,32), cakeTopMat);
+cakeTop.position.y = 0.19;
+cake.add(cakeTop);
+const cakeRim = new THREE.Mesh(new THREE.TorusGeometry(0.49,0.035,10,32), cakeRimMat);
+cakeRim.rotation.x = Math.PI / 2;
+cakeRim.position.y = 0.2;
+cake.add(cakeRim);
+const cakeMark = new THREE.Mesh(new THREE.TorusGeometry(0.17,0.025,8,20), cakeRimMat);
+cakeMark.rotation.x = Math.PI / 2;
+cakeMark.position.y = 0.235;
+cake.add(cakeMark);
+for(let i=0;i<4;i++){
+  const petal = new THREE.Mesh(new THREE.SphereGeometry(0.07,14,10), cakeRimMat);
+  const angle = i * Math.PI / 2;
+  petal.scale.set(1.5,0.35,0.8);
+  petal.position.set(Math.cos(angle)*0.13,0.235,Math.sin(angle)*0.13);
+  petal.rotation.y = angle;
+  cake.add(petal);
+}
+// Rest the mooncake box directly on the purple planet surface beside the rabbit.
+cake.position.set(1.18,1.82,2.78);
+cake.rotation.y = -0.18;
+cake.scale.setScalar(0.82);
+scene.add(cake);
+
+// ---------- Lantern held by the rabbit ----------
+const heldLantern = new THREE.Group();
+const heldLanternBodyMat = new THREE.MeshStandardMaterial({
+  color:0xb51f24, emissive:0x4a0808, emissiveIntensity:0.45, roughness:0.5
+});
+const heldLanternTrimMat = new THREE.MeshStandardMaterial({
+  color:0xf0b64e, emissive:0x6f2c0a, emissiveIntensity:0.3, roughness:0.55
+});
+const heldBody = new THREE.Mesh(new THREE.SphereGeometry(0.27,24,18), heldLanternBodyMat);
+heldBody.scale.set(0.82,1.28,0.82);
+heldLantern.add(heldBody);
+const heldTop = new THREE.Mesh(new THREE.CylinderGeometry(0.17,0.17,0.08,20), heldLanternTrimMat);
+heldTop.position.y = 0.36;
+heldLantern.add(heldTop);
+const heldBottom = heldTop.clone();
+heldBottom.position.y = -0.36;
+heldLantern.add(heldBottom);
+[-0.16,0,0.16].forEach(y=>{
+  const band = new THREE.Mesh(new THREE.TorusGeometry(0.22,0.018,8,24), heldLanternTrimMat);
+  band.rotation.x = Math.PI / 2;
+  band.position.y = y;
+  heldLantern.add(band);
+});
+const heldFlower = new THREE.Mesh(new THREE.TorusGeometry(0.09,0.014,8,16), heldLanternTrimMat);
+heldFlower.rotation.x = Math.PI / 2;
+heldFlower.position.set(0,0.02,0.225);
+heldLantern.add(heldFlower);
+for(let i=0;i<4;i++){
+  const petal = new THREE.Mesh(new THREE.SphereGeometry(0.045,12,8), heldLanternTrimMat);
+  const angle = i * Math.PI / 2;
+  petal.scale.set(1.3,0.3,0.7);
+  petal.position.set(Math.cos(angle)*0.075,0.02,0.225+Math.sin(angle)*0.075);
+  petal.rotation.y = angle;
+  heldLantern.add(petal);
+}
+const heldString = new THREE.Mesh(new THREE.CylinderGeometry(0.012,0.012,0.62,8), heldLanternTrimMat);
+heldString.position.y = 0.7;
+heldLantern.add(heldString);
+const heldTassel = new THREE.Mesh(new THREE.CylinderGeometry(0.06,0.025,0.22,12), heldLanternTrimMat);
+heldTassel.position.y = -0.5;
+heldLantern.add(heldTassel);
+const heldGlow = new THREE.PointLight(0xff7138, 0.38, 4);
+heldGlow.position.set(0,0,0.1);
+heldLantern.add(heldGlow);
+heldLantern.position.set(0.62,0.32,0.75);
+heldLantern.rotation.z = -0.1;
+heldLantern.scale.setScalar(0.82);
+rabbit.add(heldLantern);
 
 // ---------- Lanterns (clickable, orbiting) ----------
 const lanternMat = new THREE.MeshStandardMaterial({color:0xff8a3d, emissive:0xff5a10, emissiveIntensity:0.6, roughness:0.5});
