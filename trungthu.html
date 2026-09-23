@@ -13,6 +13,7 @@
   *{box-sizing:inherit}
   html,body{height:100%; margin:0; background:var(--bg); color:var(--text); font-family:'Segoe UI',system-ui,sans-serif; overflow:hidden;}
   #scene{position:fixed; inset:0;}
+  #musicPlayer{position:fixed; width:1px; height:1px; border:0; opacity:0; pointer-events:none;}
   canvas{display:block; width:100%; height:100%; touch-action:none; cursor:grab;}
   canvas:active{cursor:grabbing;}
 
@@ -85,11 +86,27 @@
 <div id="ui">
   <div id="hint">Kéo để xoay • Cuộn để zoom • Chạm vào lồng đèn để xem lời chúc</div>
 </div>
+<iframe
+  id="musicPlayer"
+  src="https://www.youtube.com/embed/rvCxmwXk4PI?autoplay=1&loop=1&playlist=rvCxmwXk4PI&controls=0&rel=0&playsinline=1&enablejsapi=1"
+  title="Nhạc Trung Thu"
+  allow="autoplay; encrypted-media"
+  referrerpolicy="strict-origin-when-cross-origin"
+  aria-hidden="true"></iframe>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 // ---------- Scene setup ----------
 const container = document.getElementById('scene');
+const musicPlayer = document.getElementById('musicPlayer');
+function startMusicAfterInteraction(){
+  musicPlayer.contentWindow.postMessage(JSON.stringify({event:'command',func:'unMute',args:[]}), 'https://www.youtube.com');
+  musicPlayer.contentWindow.postMessage(JSON.stringify({event:'command',func:'playVideo',args:[]}), 'https://www.youtube.com');
+  window.removeEventListener('pointerdown', startMusicAfterInteraction);
+  window.removeEventListener('touchstart', startMusicAfterInteraction);
+}
+window.addEventListener('pointerdown', startMusicAfterInteraction, {once:true});
+window.addEventListener('touchstart', startMusicAfterInteraction, {once:true, passive:true});
 const scene = new THREE.Scene();
 scene.fog = new THREE.FogExp2(0x0a0618, 0.02);
 
@@ -122,12 +139,31 @@ const warmLight = new THREE.PointLight(0xffa060, 0.8, 30);
 warmLight.position.set(0,3,4);
 scene.add(warmLight);
 
-// ---------- Ground mound ----------
-const groundMat = new THREE.MeshStandardMaterial({color:0x2b2140, roughness:0.9});
-const ground = new THREE.Mesh(new THREE.SphereGeometry(9,48,24,0,Math.PI*2,0,Math.PI/2), groundMat);
-ground.position.y = -3.2;
-ground.scale.set(1,0.55,1);
-scene.add(ground);
+// ---------- Purple planet ----------
+const planetMat = new THREE.MeshStandardMaterial({
+  color:0x40336f, roughness:0.82, metalness:0.04,
+  emissive:0x100c2d, emissiveIntensity:0.22
+});
+const planet = new THREE.Mesh(new THREE.SphereGeometry(7,64,40), planetMat);
+planet.position.y = -3.2;
+planet.scale.y = 0.78;
+scene.add(planet);
+const continentMat = new THREE.MeshStandardMaterial({color:0x65588c, roughness:0.95, emissive:0x191433, emissiveIntensity:0.18});
+const continents = new THREE.Group();
+const continentShapes = [
+  {x:-2.7,y:-1.8,z:5.45,sx:1.7,sy:.45,sz:.8,r:-.2},
+  {x:2.2,y:-2.7,z:5.75,sx:1.25,sy:.35,sz:.65,r:.35},
+  {x:-.4,y:-4.45,z:5.95,sx:1.0,sy:.3,sz:.55,r:-.65},
+  {x:3.7,y:.1,z:4.9,sx:.8,sy:.28,sz:.5,r:.1}
+];
+continentShapes.forEach(shape=>{
+  const patch = new THREE.Mesh(new THREE.SphereGeometry(1,24,16), continentMat);
+  patch.position.set(shape.x,shape.y,shape.z);
+  patch.scale.set(shape.sx,shape.sy,shape.sz);
+  patch.rotation.z = shape.r;
+  continents.add(patch);
+});
+scene.add(continents);
 
 // ---------- Tree ----------
 const trunkMat = new THREE.MeshStandardMaterial({color:0x2a1810, roughness:0.9});
@@ -272,7 +308,8 @@ const messages = [
   "Dưới ánh trăng này, chúc bạn gặp nhiều may mắn và những điều tốt đẹp 🌙",
   "Chúc bạn có một mùa Trung Thu rực rỡ như muôn ngàn ánh đèn lồng 🎇",
   "Mong những ước mơ của bạn sẽ toả sáng như trăng rằm đêm nay 🐇",
-  "Trung Thu về, chúc bạn luôn được yêu thương và trân trọng 💛"
+  "Trung Thu về, chúc bạn luôn được yêu thương và trân trọng 💛",
+  
 ];
 const lanterns = [];
 const lanternCount = 6;
@@ -334,14 +371,21 @@ scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({color:0xffffff,siz
 
 // ---------- Interaction: drag to rotate, wheel to zoom ----------
 let dragging=false, lastX=0, lastY=0;
-function onDown(x,y){dragging=true; lastX=x; lastY=y;}
+function onDown(x,y){
+  dragging=true;
+  lastX=x;
+  lastY=y;
+}
 function onMove(x,y){
   if(!dragging) return;
   camTheta -= (x-lastX)*0.005;
   camPhi = Math.min(2.4, Math.max(0.3, camPhi - (y-lastY)*0.005));
   lastX=x; lastY=y; updateCamera();
 }
-function onUp(){dragging=false;}
+function onUp(){
+  if(!dragging) return;
+  dragging=false;
+}
 renderer.domElement.addEventListener('mousedown', e=>onDown(e.clientX,e.clientY));
 renderer.domElement.addEventListener('mousemove', e=>onMove(e.clientX,e.clientY));
 window.addEventListener('mouseup', onUp);
@@ -400,6 +444,8 @@ function animate(){
   const delta = Math.min((now-lastFrame)/1000, 0.05);
   lastFrame = now;
   t += delta;
+  camTheta += delta * 0.12;
+  updateCamera();
   lanterns.forEach(g=>{
     g.userData.angle += g.userData.speed*delta;
     g.position.x = Math.cos(g.userData.angle)*g.userData.radius;
